@@ -1,0 +1,677 @@
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# Hypothesis testing\n",
+    "\n",
+    "In this notebook we demonstrate formal hypothesis testing using the [NHANES](https://www.cdc.gov/nchs/nhanes/index.htm) data.\n",
+    "\n",
+    "It is important to note that the NHANES data are a \"complex survey\".  The data are not an independent and representative sample from the target population.  Proper analysis of complex survey data should make use of additional information about how the data were collected.  Since complex survey analysis is a somewhat specialized topic, we ignore this aspect of the data here, and analyze the NHANES data as if it were an independent and identically distributed sample from a population.\n",
+    "\n",
+    "First we import the libraries that we will need."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "%matplotlib inline\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "import seaborn as sns\n",
+    "import matplotlib.pyplot as plt\n",
+    "import statsmodels.api as sm\n",
+    "import scipy.stats.distributions as dist"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Below we read the data, and convert some of the integer codes to text values.  The NHANES codebooks for\n",
+    "[SMQ020](https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/SMQ_I.htm#SMQ020),\n",
+    "[RIAGENDR](https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/DEMO_I.htm#RIAGENDR), and\n",
+    "[DMDCITZN](https://wwwn.cdc.gov/Nchs/Nhanes/2015-2016/DEMO_I.htm#DMDCITZN) describe the meanings of the numerical\n",
+    "codes."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "da = pd.read_csv(\"nhanes_2015_2016.csv\")\n",
+    "\n",
+    "da[\"SMQ020x\"] = da.SMQ020.replace({1: \"Yes\", 2: \"No\", 7: np.nan, 9: np.nan})  # np.nan represents a missing value\n",
+    "da[\"RIAGENDRx\"] = da.RIAGENDR.replace({1: \"Male\", 2: \"Female\"})\n",
+    "da[\"DMDCITZNx\"] = da.DMDCITZN.replace({1: \"Yes\", 2: \"No\", 7: np.nan, 9: np.nan})"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Hypothesis tests for one proportions\n",
+    "\n",
+    "The most basic hypothesis test may be the one-sample test for a proportion.  This test is used if we have specified a particular value as the null value for the proportion, and we wish to assess if the data are compatible with the true parameter value being equal to this specified value.  One-sample tests are not used very often in practice, because it is not very common that we have a specific fixed value to use for comparison. \n",
+    "\n",
+    "For illustration, imagine that the rate of lifetime smoking in another country was known to be 40%, and we wished to assess whether the rate of lifetime smoking in the US were different from 40%.  In the following notebook cell, we carry out the (two-sided) one-sample test that the population proportion of smokers is 0.4, and obtain a p-value of 0.43.  This indicates that the NHANES data are compatible with the proportion of (ever) smokers in the US being 40%. "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0.7823563854332805 0.4340051581348052\n"
+     ]
+    }
+   ],
+   "source": [
+    "x = da.SMQ020x.dropna() == \"Yes\"\n",
+    "p = x.mean()\n",
+    "se = np.sqrt(0.4 * 0.6 / len(x))\n",
+    "test_stat = (p - 0.4) / se\n",
+    "pvalue = 2*dist.norm.cdf(-np.abs(test_stat))\n",
+    "print(test_stat, pvalue)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The following cell carries out the same test as performed above using the Statsmodels library.  The results in the first (default) case below are slightly different from the results obtained above because Statsmodels by default uses the sample proportion instead of the null proportion when computing the standard error.  This distinction is rarely consequential, but we can specify that the null proportion should be used to calculate the standard error, and the results agree exactly with what we calculated above.  The first two lines below carry out tests using the normal approximation to the sampling distribution of the test statistic, and the third line below carries uses the exact binomial sampling distribution.  We can see here that the p-values are nearly identical in all three cases. This is expected when the sample size is large, and the proportion is not close to either 0 or 1."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "(0.7807518954896244, 0.43494843171868214)\n",
+      "(0.7823563854332805, 0.4340051581348052)\n",
+      "0.4340360854410036\n"
+     ]
+    },
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "C:\\ProgramData\\Anaconda3\\lib\\site-packages\\scipy\\stats\\_discrete_distns.py:67: RuntimeWarning: divide by zero encountered in _binom_pdf\n",
+      "  return _boost._binom_pdf(x, n, p)\n"
+     ]
+    }
+   ],
+   "source": [
+    "# Prints test statistic, p-value\n",
+    "print(sm.stats.proportions_ztest(x.sum(), len(x), 0.4)) # Normal approximation with estimated proportion in SE\n",
+    "print(sm.stats.proportions_ztest(x.sum(), len(x), 0.4, prop_var=0.4)) # Normal approximation with null proportion in SE\n",
+    "\n",
+    "# Prints the p-value\n",
+    "print(sm.stats.binom_test(x.sum(), len(x), 0.4)) # Exact binomial p-value"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Hypothesis tests for two proportions\n",
+    "\n",
+    "Comparative tests tend to be used much more frequently than tests comparing one population to a fixed value.  A two-sample test of proportions is used to assess whether the proportion of individuals with some trait differs between two sub-populations.  For example, we can compare the smoking rates between females and males. Since smoking rates vary strongly with age, we do this in the subpopulation of people between 20 and 25 years of age.  In the cell below, we carry out this test without using any libraries, implementing all the test procedures covered elsewhere in the course using Python code.  We find that the smoking rate for men is around 10 percentage points greater than the smoking rate for females, and this difference is statistically significant (the p-value is around 0.01)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "              Smoke    N\n",
+      "RIAGENDRx               \n",
+      "Female     0.238971  272\n",
+      "Male       0.341270  252\n",
+      "-2.5833303066279414 0.009785159057508375\n"
+     ]
+    }
+   ],
+   "source": [
+    "dx = da[[\"SMQ020x\", \"RIDAGEYR\", \"RIAGENDRx\"]].dropna()  # Drop missing values\n",
+    "dx = dx.loc[(dx.RIDAGEYR >= 20) & (dx.RIDAGEYR <= 25), :] # Restrict to people between 20 and 25 years old\n",
+    "\n",
+    "# Summarize the data by caclculating the proportion of yes responses and the sample size\n",
+    "p = dx.groupby(\"RIAGENDRx\")[\"SMQ020x\"].agg([lambda z: np.mean(z==\"Yes\"), \"size\"])\n",
+    "p.columns = [\"Smoke\", \"N\"]\n",
+    "print(p)\n",
+    "\n",
+    "# The pooled rate of yes responses, and the standard error of the estimated difference of proportions\n",
+    "p_comb = (dx.SMQ020x == \"Yes\").mean()\n",
+    "va = p_comb * (1 - p_comb)\n",
+    "se = np.sqrt(va * (1 / p.N.Female + 1 / p.N.Male))\n",
+    "\n",
+    "# Calculate the test statistic and its p-value\n",
+    "test_stat = (p.Smoke.Female - p.Smoke.Male) / se\n",
+    "pvalue = 2*dist.norm.cdf(-np.abs(test_stat))\n",
+    "print(test_stat, pvalue)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Essentially the same test as above can be conducted by converting the \"Yes\"/\"No\" responses to numbers (Yes=1, No=0) and conducting a two-sample t-test, as below:"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/plain": [
+       "(-2.5949731446269344, 0.00972590232121254, 522.0)"
+      ]
+     },
+     "execution_count": 6,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "dx_females = dx.loc[dx.RIAGENDRx==\"Female\", \"SMQ020x\"].replace({\"Yes\": 1, \"No\": 0})\n",
+    "dx_males = dx.loc[dx.RIAGENDRx==\"Male\", \"SMQ020x\"].replace({\"Yes\": 1, \"No\": 0})\n",
+    "sm.stats.ttest_ind(dx_females, dx_males) # prints test statistic, p-value, degrees of freedom"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Hypothesis tests comparing means\n",
+    "\n",
+    "Tests of means are similar in many ways to tests of proportions.  Just as with proportions, for comparing means there are one and two-sample tests, z-tests and t-tests, and one-sided and two-sided tests.  As with tests of proportions, one-sample tests of means are not very common, but we illustrate a one sample test in the cell below.  We compare systolic blood pressure to the fixed value 120 (which is the lower threshold for \"pre-hypertension\"), and find that the mean is significantly different from 120 (the point estimate of the mean is 126)."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "125.86698337292161\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "(7.469764137102597, 8.033869113167905e-14)"
+      ]
+     },
+     "execution_count": 7,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "dx = da[[\"BPXSY1\", \"RIDAGEYR\", \"RIAGENDRx\"]].dropna()\n",
+    "dx = dx.loc[(dx.RIDAGEYR >= 40) & (dx.RIDAGEYR <= 50) & (dx.RIAGENDRx == \"Male\"), :]\n",
+    "print(dx.BPXSY1.mean()) # prints mean blood pressure\n",
+    "sm.stats.ztest(dx.BPXSY1, value=120)  # prints test statistic, p-value"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In the cell below, we carry out a formal test of the null hypothesis that the mean blood pressure for women between the ages of 50 and 60 is equal to the mean blood pressure of men between the ages of 50 and 60.  The results indicate that while the mean systolic blood pressure for men is slightly greater than that for women (129 mm/Hg versus 128 mm/Hg), this difference is not statistically significant. \n",
+    "\n",
+    "There are a number of different variants on the two-sample t-test. Two often-encountered variants are the t-test carried out using the t-distribution, and the t-test carried out using the normal approximation to the reference distribution of the test statistic, often called a z-test.  Below we display results from both these testing approaches.  When the sample size is large, the difference between the t-test and z-test is very small.  "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "127.92561983471074 129.23829787234044\n",
+      "(-1.105435895556249, 0.2689707570859362)\n",
+      "(-1.105435895556249, 0.26925004137768577, 952.0)\n"
+     ]
+    }
+   ],
+   "source": [
+    "dx = da[[\"BPXSY1\", \"RIDAGEYR\", \"RIAGENDRx\"]].dropna()\n",
+    "dx = dx.loc[(dx.RIDAGEYR >= 50) & (dx.RIDAGEYR <= 60), :]\n",
+    "bpx_female = dx.loc[dx.RIAGENDRx==\"Female\", \"BPXSY1\"]\n",
+    "bpx_male = dx.loc[dx.RIAGENDRx==\"Male\", \"BPXSY1\"]\n",
+    "print(bpx_female.mean(), bpx_male.mean()) # prints female mean, male mean\n",
+    "print(sm.stats.ztest(bpx_female, bpx_male)) # prints test statistic, p-value\n",
+    "print(sm.stats.ttest_ind(bpx_female, bpx_male)) # prints test statistic, p-value, degrees of freedom"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Another important aspect of two-sample mean testing is \"heteroscedasticity\", meaning that the variances within the two groups being compared may be different.  While the goal of the test is to compare the means, the variances play an important role in calibrating the statistics (deciding how big the mean difference needs to be to be declared statistically significant).  In the NHANES data, we see that there are moderate differences between the amount of variation in BMI for females and for males, looking within 10-year age bands.  In every age band, females having greater variation than males."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [
+    {
+     "data": {
+      "text/html": [
+       "<div>\n",
+       "<style scoped>\n",
+       "    .dataframe tbody tr th:only-of-type {\n",
+       "        vertical-align: middle;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe tbody tr th {\n",
+       "        vertical-align: top;\n",
+       "    }\n",
+       "\n",
+       "    .dataframe thead th {\n",
+       "        text-align: right;\n",
+       "    }\n",
+       "</style>\n",
+       "<table border=\"1\" class=\"dataframe\">\n",
+       "  <thead>\n",
+       "    <tr style=\"text-align: right;\">\n",
+       "      <th>RIAGENDRx</th>\n",
+       "      <th>Female</th>\n",
+       "      <th>Male</th>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>agegrp</th>\n",
+       "      <th></th>\n",
+       "      <th></th>\n",
+       "    </tr>\n",
+       "  </thead>\n",
+       "  <tbody>\n",
+       "    <tr>\n",
+       "      <th>(18, 30]</th>\n",
+       "      <td>7.745893</td>\n",
+       "      <td>6.649440</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>(30, 40]</th>\n",
+       "      <td>8.315608</td>\n",
+       "      <td>6.622412</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>(40, 50]</th>\n",
+       "      <td>8.076195</td>\n",
+       "      <td>6.407076</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>(50, 60]</th>\n",
+       "      <td>7.575848</td>\n",
+       "      <td>5.914373</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>(60, 70]</th>\n",
+       "      <td>7.604514</td>\n",
+       "      <td>5.933307</td>\n",
+       "    </tr>\n",
+       "    <tr>\n",
+       "      <th>(70, 80]</th>\n",
+       "      <td>6.284968</td>\n",
+       "      <td>4.974855</td>\n",
+       "    </tr>\n",
+       "  </tbody>\n",
+       "</table>\n",
+       "</div>"
+      ],
+      "text/plain": [
+       "RIAGENDRx    Female      Male\n",
+       "agegrp                       \n",
+       "(18, 30]   7.745893  6.649440\n",
+       "(30, 40]   8.315608  6.622412\n",
+       "(40, 50]   8.076195  6.407076\n",
+       "(50, 60]   7.575848  5.914373\n",
+       "(60, 70]   7.604514  5.933307\n",
+       "(70, 80]   6.284968  4.974855"
+      ]
+     },
+     "execution_count": 9,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "dx = da[[\"BMXBMI\", \"RIDAGEYR\", \"RIAGENDRx\"]].dropna()\n",
+    "da[\"agegrp\"] = pd.cut(da.RIDAGEYR, [18, 30, 40, 50, 60, 70, 80])\n",
+    "da.groupby([\"agegrp\", \"RIAGENDRx\"])[\"BMXBMI\"].agg(np.std).unstack()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "The standard error of the mean difference (e.g. mean female blood pressure minus mean male blood pressure) can be estimated in at least two different ways.  In the statsmodels library, these approaches are referred to as the \"pooled\" and the \"unequal\" approach to estimating the variance.  If the variances are equal (i.e. there is no heteroscedasticity), then there should be little difference between the two approaches.  Even in the presence of moderate heteroscedasticity, as we have here, we can see that the results for the two methods are quite similar.  Below we have a loop that considers each 10-year age band and assesses the evidence for a difference in mean BMI for women and for men.  The results printed in each row of output are the test-statistic and p-value."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "(18, 30]\n",
+      "pooled:  (1.7026932933643306, 0.08862548061449803)\n",
+      "unequal: (1.7174610823927183, 0.08589495934713169)\n",
+      "\n",
+      "(30, 40]\n",
+      "pooled:  (1.4378280405644919, 0.15048285114648174)\n",
+      "unequal: (1.4437869620833497, 0.1487989105789246)\n",
+      "\n",
+      "(40, 50]\n",
+      "pooled:  (2.8933761158070186, 0.003811246059501354)\n",
+      "unequal: (2.9678691663536725, 0.0029987194174035366)\n",
+      "\n",
+      "(50, 60]\n",
+      "pooled:  (3.362108779981383, 0.0007734964571391287)\n",
+      "unequal: (3.3754943901739387, 0.0007368319423226156)\n",
+      "\n",
+      "(60, 70]\n",
+      "pooled:  (3.617240144243268, 0.00029776102103194453)\n",
+      "unequal: (3.628483094544553, 0.00028509141471492935)\n",
+      "\n",
+      "(70, 80]\n",
+      "pooled:  (2.926729252512241, 0.003425469414486057)\n",
+      "unequal: (2.9377798867692064, 0.0033057163315194853)\n",
+      "\n"
+     ]
+    }
+   ],
+   "source": [
+    "for k, v in da.groupby(\"agegrp\"):\n",
+    "    bmi_female = v.loc[v.RIAGENDRx==\"Female\", \"BMXBMI\"].dropna()\n",
+    "    bmi_female = sm.stats.DescrStatsW(bmi_female)\n",
+    "    bmi_male = v.loc[v.RIAGENDRx==\"Male\", \"BMXBMI\"].dropna()\n",
+    "    bmi_male = sm.stats.DescrStatsW(bmi_male)\n",
+    "    print(k)\n",
+    "    print(\"pooled: \", sm.stats.CompareMeans(bmi_female, bmi_male).ztest_ind(usevar='pooled'))\n",
+    "    print(\"unequal:\", sm.stats.CompareMeans(bmi_female, bmi_male).ztest_ind(usevar='unequal'))\n",
+    "    print()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "### Paired tests\n",
+    "\n",
+    "A common situation in applied research is to measure the same quantity multiple times on each unit of analysis.  For example, in NHANES, systolic blood pressure is measured at least two times (sometimes there is a third measurement) on each subject.  Although the measurements are repeated, there is no guarantee that the mean is the same each time, i.e. the mean blood pressure may be slightly lower on the second measurement compared to the first, since people are a bit more nervous the first time they are measured.  A paired test is a modified form of mean test that can be used when we are comparing two repeated measurements on the same unit.\n",
+    "\n",
+    "A paired t-test for means is equivalent to taking the difference between the first and second measurement, and using a one-sample test to compare the mean of these differences to zero. Below we see that in the entire NHANES sample, the first measurement of systolic blood pressure is on average 0.67 mm/Hg greater than the second measurement.  While this difference is not large, it is strongly statistically significant.  That is, there is strong evidence that the mean values for the first and second blood pressure measurement differ."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0.6749860309182343\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "(9.800634425497911, 1.1188070930963587e-22)"
+      ]
+     },
+     "execution_count": 11,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "dx = da[[\"BPXSY1\", \"BPXSY2\"]].dropna()\n",
+    "db = dx.BPXSY1 - dx.BPXSY2\n",
+    "print(db.mean())\n",
+    "sm.stats.ztest(db)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "To probe this effect further, we can divide the population into 10 year wide age bands and also stratify by gender, then carry out the paired t-test within each of the resulting 12 strata.  We see that the second systolic blood pressure measurement is always lower on average than the first.  The difference is larger for older people and for males.  The difference is statistically significant for females over 30, and for males over 60.   \n",
+    "\n",
+    "Conducting many hypothesis tests and \"cherry picking\" the interesting results is usually a bad practice.  Here we are doing such \"multiple testing\" for illustration, and acknowledge that the strongest differences may be over-stated.  Nevertheless, there is a clear and consistent trend with age -- older people tend to have greater differences between their first and second blood pressure measurements than younger people.  There is also a difference between the genders, with older men having a stronger difference between the first and second blood pressure measurements than older women.  The gender difference for younger peple is less clear."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "('Female', Interval(18, 30, closed='right')) 0.13708260105448156 569 (0.7612107360791227, 0.4465312067051751)\n",
+      "('Female', Interval(30, 40, closed='right')) 0.6713615023474179 426 (3.307398751951031, 0.0009416674523368051)\n",
+      "('Female', Interval(40, 50, closed='right')) 0.5970149253731343 469 (2.6040611621024654, 0.009212631487347644)\n",
+      "('Female', Interval(50, 60, closed='right')) 0.7685393258426966 445 (3.1023718750881724, 0.001919766301204196)\n",
+      "('Female', Interval(60, 70, closed='right')) 0.8787878787878788 396 (3.1024528501809625, 0.0019192411825181255)\n",
+      "('Female', Interval(70, 80, closed='right')) 1.4512820512820512 390 (5.141706875154317, 2.722536503552981e-07)\n",
+      "('Male', Interval(18, 30, closed='right')) 0.00390625 512 (0.01959622841647691, 0.9843654725443948)\n",
+      "('Male', Interval(30, 40, closed='right')) 0.46296296296296297 432 (1.9451535788714596, 0.05175649697939119)\n",
+      "('Male', Interval(40, 50, closed='right')) 0.17894736842105263 380 (0.7201800810138878, 0.47141412641258706)\n",
+      "('Male', Interval(50, 60, closed='right')) 0.3691588785046729 428 (1.4391115097646396, 0.1501189315054144)\n",
+      "('Male', Interval(60, 70, closed='right')) 1.2736077481840193 413 (4.781940964515296, 1.7361067031915549e-06)\n",
+      "('Male', Interval(70, 80, closed='right')) 2.031413612565445 382 (6.8013414549535005, 1.036494265013724e-11)\n"
+     ]
+    }
+   ],
+   "source": [
+    "dx = da[[\"RIAGENDRx\", \"BPXSY1\", \"BPXSY2\", \"RIDAGEYR\"]].dropna()\n",
+    "dx[\"agegrp\"] = pd.cut(dx.RIDAGEYR, [18, 30, 40, 50, 60, 70, 80])\n",
+    "for k, g in dx.groupby([\"RIAGENDRx\", \"agegrp\"]):\n",
+    "    db = g.BPXSY1 - g.BPXSY2\n",
+    "    # print stratum definition, mean difference, sample size, test statistic, p-value\n",
+    "    print(k, db.mean(), db.size, sm.stats.ztest(db.values, value=0))"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Power and sample size for hypothesis tests\n",
+    "\n",
+    "Like nearly any analysis with data, hypothesis tests will yield more sensitive and confident results when there are larger amounts of data.  Here we will study the relationship between the sample size (amount of data), and the behavior of a hypothesis test.  For illustration, we will use the paired t-test for assessing whether the first and second systolic blood pressure measurement have different means, restricting to people between 50 and 60 years of age.\n",
+    "\n",
+    "The simulation below randomly subsamples sets of 100, 200, 400, and 800 people from the 50-60 year old subset of NHANES, and conducts a paired z-test on each subsample.  This process is repeated 500 times for each sample size.  We report the fraction of these 500 trials where the p-value was smaller than 0.05.  A higher fraction of trials where p<0.05 implies that it is easier to detect a difference between the first and second blood pressure measurements.  We see that this proportion (called \"statistical power\") is only around 0.2 when the sample size is 100, and grows to essentially 100% when the sample size is 800.  Note that all of these subsamples are drawn from the same parent population, so there is no change from subsample to subsample in terms of whether the means are truly different.  The only thing that changes is our evidence that the difference is real.  When the sample size is small, we rarely amass such evidence."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "0.222\n",
+      "0.4\n",
+      "0.686\n",
+      "1.0\n"
+     ]
+    }
+   ],
+   "source": [
+    "all_p = []\n",
+    "dy = dx.loc[(dx.RIDAGEYR >= 50) & (dx.RIDAGEYR <= 60), :]\n",
+    "for n in 100, 200, 400, 800:\n",
+    "    pv = []\n",
+    "    for i in range(500):\n",
+    "        dz = dy.sample(n)\n",
+    "        db = dz.BPXSY1 - dz.BPXSY2\n",
+    "        _, p = sm.stats.ztest(db.values, value=0)\n",
+    "        pv.append(p)\n",
+    "    pv = np.asarray(pv)\n",
+    "    all_p.append(pv)\n",
+    "    print((pv <= 0.05).mean())"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "In the simulation code above, we saved all the p-values to the array named `all_p` so we can consider them further here.  The histogram below shows the distribution of p-values for 500 subsamples of data of size 100.  We see that there are more smaller p-values than larger ones, but not to a dramatic degree.  Some of the p-values are almost 1, indicating that the subsample mean differences were almost zero in those cases."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "C:\\ProgramData\\Anaconda3\\lib\\site-packages\\seaborn\\distributions.py:2619: FutureWarning: `distplot` is a deprecated function and will be removed in a future version. Please adapt your code to use either `displot` (a figure-level function with similar flexibility) or `histplot` (an axes-level function for histograms).\n",
+      "  warnings.warn(msg, FutureWarning)\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<AxesSubplot:ylabel='Density'>"
+      ]
+     },
+     "execution_count": 14,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "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\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "sns.distplot(all_p[0])"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "Next we inspect the distribution of p-values for subsamples of size 400.  We see that the p-values are much more concentrated close to zero compared to when we had only 100 data points.  If we obtain a sample of size 400 from this population, we have around a 70% chance of obtaining a p-value smaller than 0.05, and are very unlikely to obtain a p-value greater than 0.4."
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 15,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stderr",
+     "output_type": "stream",
+     "text": [
+      "C:\\ProgramData\\Anaconda3\\lib\\site-packages\\seaborn\\distributions.py:2619: FutureWarning: `distplot` is a deprecated function and will be removed in a future version. Please adapt your code to use either `displot` (a figure-level function with similar flexibility) or `histplot` (an axes-level function for histograms).\n",
+      "  warnings.warn(msg, FutureWarning)\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "<AxesSubplot:ylabel='Density'>"
+      ]
+     },
+     "execution_count": 15,
+     "metadata": {},
+     "output_type": "execute_result"
+    },
+    {
+     "data": {
+      "image/png": "iVBORw0KGgoAAAANSUhEUgAAAX4AAAD4CAYAAADrRI2NAAAAOXRFWHRTb2Z0d2FyZQBNYXRwbG90bGliIHZlcnNpb24zLjQuMywgaHR0cHM6Ly9tYXRwbG90bGliLm9yZy/MnkTPAAAACXBIWXMAAAsTAAALEwEAmpwYAAAeKUlEQVR4nO3de3xcZb3v8c9vZnJr0luapA2936DlIqWEFqhWENGKl6KiCAI9eCmK7rO9bt2ec9S9dZ+D+7UV3W4VEXqsyuWAomAFtBSk3CGFUlpa2tIbvSXpNUlzn/mdP2ZSQps2k3TWTNL1fb9e88rMmrVm/VYHvmvN8zzzjLk7IiISHpFcFyAiItml4BcRCRkFv4hIyCj4RURCRsEvIhIysVwXkI6ysjKfMGFCrssQERlQVqxYscfdy49cPiCCf8KECVRXV+e6DBGRAcXMtna3XE09IiIho+AXEQkZBb+ISMgo+EVEQiaw4DezQjN73sxeNrM1ZvYvqeWlZrbUzDak/g4PqgYRETlakFf8rcC73P1sYAYwz8zOB74JLHP3qcCy1GMREcmSwILfkxpTD/NSNwfmA4tTyxcDlwdVg4iIHC3QNn4zi5rZSqAWWOruzwEj3X0XQOpvxTG2XWhm1WZWXVdXF2SZIiKhEmjwu3vc3WcAY4BZZnZmL7a91d2r3L2qvPyoL56JiEgfZeWbu+5+wMz+DswDasys0t13mVklyU8DoXDnc9uO+/zVs8dlqRIRCbMgR/WUm9mw1P0i4N3AOuABYEFqtQXA/UHVICIiRwvyir8SWGxmUZInmHvcfYmZPQPcY2afBrYBHwuwBhEROUJgwe/uq4Bzulm+F7gkqP2KiMjx6Zu7IiIho+AXEQkZBb+ISMgo+EVEQkbBLyISMgp+EZGQUfCLiISMgl9EJGQU/CIiIaPgFxEJGQW/iEjIKPhFREJGwS8iEjIKfhGRkFHwi4iEjIJfRCRkFPwiIiGj4BcRCRkFv4hIyCj4RURCRsEvIhIyCn4RkZBR8IuIhIyCX0QkZBT8IiIho+AXEQmZwILfzMaa2WNmttbM1pjZP6aWf9fMdpjZytTtsqBqEBGRo8UCfO0O4Kvu/qKZDQZWmNnS1HM3u/t/BLhvERE5hsCC3913AbtS9xvMbC0wOqj9iYhIerLSxm9mE4BzgOdSi75oZqvMbJGZDT/GNgvNrNrMquvq6rJRpohIKAQe/GZWAvwB+JK71wO/ACYDM0h+Ivhhd9u5+63uXuXuVeXl5UGXKSISGoEGv5nlkQz9O9z9PgB3r3H3uLsngF8Bs4KsQURE3irIUT0G3A6sdfcfdVle2WW1DwOrg6pBRESOFuSonjnAtcArZrYytexbwFVmNgNwYAtwQ4A1iIjIEYIc1fMkYN089WBQ+xQRkZ7pm7siIiGj4BcRCRkFv4hIyCj4RURCRsEvIhIyCn4RkZBR8IuIhIyCX0QkZBT8IiIho+AXEQkZBb+ISMgo+EVEQkbBLyISMgp+EZGQUfCLiISMgl9EJGQU/CIiIaPgFxEJGQW/iEjIKPhFREJGwS8iEjIKfhGRkFHwi4iEjIJfRCRkFPwiIiETWPCb2Vgze8zM1prZGjP7x9TyUjNbamYbUn+HB1WDiIgcLcgr/g7gq+4+HTgf+IKZnQ58E1jm7lOBZanHIiKSJYEFv7vvcvcXU/cbgLXAaGA+sDi12mLg8qBqEBGRo2Wljd/MJgDnAM8BI919FyRPDkBFNmoQEZGkwIPfzEqAPwBfcvf6Xmy30Myqzay6rq4uuAJFREIm0OA3szySoX+Hu9+XWlxjZpWp5yuB2u62dfdb3b3K3avKy8uDLFNEJFSCHNVjwO3AWnf/UZenHgAWpO4vAO4PqgYRETlaLMDXngNcC7xiZitTy74F3ATcY2afBrYBHwuwBhEROUJgwe/uTwJ2jKcvCWq/IiJyfPrmrohIyCj4RURCRsEvIhIyCn4RkZBR8IuIhIyCX0QkZBT8IiIho+AXEQkZBb+ISMikFfxm9gcze7+Z6UQhIjLApRvkvwCuBjaY2U1mNi3AmkREJEBpBb+7P+LunwRmAluApWb2tJldn5p6WUREBoi0m27MbATw34DPAC8BPyF5IlgaSGUiIhKItGbnNLP7gGnAb4EPdv50IvD/zKw6qOJERCTz0p2W+TZ3f7DrAjMrcPdWd68KoC4REQlIuk093+9m2TOZLERERLLjuFf8ZjYKGA0Umdk5vPnDKkOAQQHXJiIiAeipqee9JDt0xwBdfze3geTPKIqIyABz3OB398XAYjP7qLv/IUs1iYhIgHpq6rnG3X8HTDCzrxz5vLv/qJvNRESkH+upqac49bck6EJERCQ7emrq+WXq779kpxwREQlaupO0/buZDTGzPDNbZmZ7zOyaoIsTEZHMS3cc/3vcvR74ALAdOBX4emBViYhIYNIN/s6J2C4D7nL3fQHVIyIiAUt3yoY/m9k6oBm40czKgZbgyhIRkaCkOy3zN4ELgCp3bwcOAfOPt42ZLTKzWjNb3WXZd81sh5mtTN0uO5HiRUSk99K94geYTnI8f9dtfnOc9X8N/Fc369zs7v/Ri/2KiEgGpTst82+BycBKIJ5a7Bwn+N19uZlNOMH6REQkw9K94q8CTnd3z8A+v2hm1wHVwFfdfX93K5nZQmAhwLhx4zKwWxERgfRH9awGRmVgf78g+clhBrAL+OGxVnT3W929yt2rysvLM7BrERGB9K/4y4BXzex5oLVzobt/qDc7c/eazvtm9itgSW+2FxGRE5du8H83Ezszs8ouP9v4YZKfJEREJIvSCn53f9zMxgNT3f0RMxsERI+3jZndBVwElJnZduA7wEVmNoNkx/AW4Ia+ly4iIn2R7qiez5LsaC0l2UY/GrgFuORY27j7Vd0svr0PNYqISAal27n7BWAOUA/g7huAiqCKEhGR4KQb/K3u3tb5IPUlrkwM7RQRkSxLN/gfN7NvkfzR9UuBe4E/B1eWiIgEJd3g/yZQB7xCskP2QeB/BlWUiIgEJ91RPQkz+xPwJ3evC7YkEREJ0nGv+C3pu2a2B1gHvGZmdWb27eyUJyIimdZTU8+XSI7mOc/dR7h7KTAbmGNmXw66OBERybyegv864Cp339y5wN03AdeknhMRkQGmp+DPc/c9Ry5MtfPndbO+iIj0cz0Ff1sfnxMRkX6qp1E9Z5tZfTfLDSgMoB4REQnYcYPf3Y87EZuIiAw86X6BS0REThIKfhGRkFHwi4iEjIJfRCRkFPwiIiGj4BcRCRkFv4hIyCj4RURCRsEvIhIyCn4RkZBJ6xe4JLMS7qzf3cCru+qJRozTTxnClPKSXJclIiGh4M+yeML5/Yo3eHn7QQrzIiQS8NzmfcyaUMqV540lFtWHMBEJloI/i9zfDP13Tx/J3FPLcIdla2tZvqGOr937MjdfOQMzy3WpInISU/Bn0eqd9by8/SCXTK/gXdMqDi+fd+Yo8mPGn1bu5MLJZXz8vLE5rFJETnaBtSuY2SIzqzWz1V2WlZrZUjPbkPo7PKj99zf1Le0sWbWTU4YVctGpFUc9f9FpFVw4eQTfeWAN2/Y25aBCEQmLIBuUfw3MO2LZN4Fl7j4VWJZ6HAq/Wr6JxpYOLp8xmmjk6KaciBk//PjZmMEPHl6XgwpFJCwCC353Xw7sO2LxfGBx6v5i4PKg9t+fHGrt4DfPbGV65RDGDB90zPUqhxbx2XdM4i+v7OLFbfuzWKGIhEm2h5CMdPddAKm/R7d5pJjZQjOrNrPqurq6rBUYhHuq3+Bgcztzp5b1uO7CuZMoKyngBw/pql9EgtFvxw66+63uXuXuVeXl5bkup88SCef2JzdTNX4440YU97h+cUGMGy+azHOb97Fiq676RSTzsh38NWZWCZD6W5vl/Wfds5v2sn1/M9deMD7tbT4xayzDBuVxy+OvB1iZiIRVtoP/AWBB6v4C4P4s7z/rfv/idgYXxHjvGaPS3mZQfozrLpjA0ldr2FjbEGB1IhJGQQ7nvAt4BjjNzLab2aeBm4BLzWwDcGnq8UnrUGsHD6/ezQfOrqQwL9qrbRdcMJ78WITfPLM1oOpEJKwC+wKXu191jKcuCWqf/c1Dq3fT1BbnozPH9HrbESUFvP+sSu57cQffmDeN4gJ9105EMqPfdu6eDB56ZRejhxVx7vi+fU/tmvPH0djawf0rd2a4MhEJMwV/QBpbO3hiwx7mnTmqz3PvzBw3nGmjBvPbZ7fi7hmuUETCSsEfkEfX1dIWTzDvzPQ7dY9kZlxz/njW7qrnxW0HMleciISagj8gf129m7KSAmaOO7HpiC4/ZzTF+VHueFadvCKSGQr+ALR2xHnstVrec8bIbufl6Y2SghgfnjmaJa/sYv+htgxVKCJhpuAPQPWW/TS1xXnXaceckaJXrjl/PG0dCe5d8UZGXk9Ewk3BH4Dl6+vIixoXTB6RkdebNmoI544fzl3Pv6FOXhE5YQr+ADy+vo6q8aUZHXv/ydnj2LznEM+8vjdjryki4aTgz7Ca+hbW7W5g7qmZnVjusrMqGVqUxx3Pb8vo64pI+Cj4M2z5+uQU0nNP7XkK5t4ozIvy0Zlj+Nua3expbM3oa4tIuGgegAxbvmEP5YMLOL1ySK+3vfO541/NXz17LIue2sy91dv5/EWT+1qiiIScrvgzKJ5wntxQxzumlvX527rHM6ViMLMnlnLX89tIJNTJKyJ9o+DPoNU7DrK/qZ13Zrh9v6urZ49j274mnty4J7B9iMjJTcGfQY+vr8MM3j4ls+37Xc07cxSlxfk9NguJiByLgj+Dlq+v46zRQxlRUhDYPgpiUa44dwxL19ZQU98S2H5E5OSl4M+Q+pZ2XnrjAHOnBv/7wFfNGkc84dzzgr7JKyK9p+DPkKc37iGe8IyP3+/OxLJi5kwZwd0vvEFHPBH4/kTk5KLgz5DH19dRUhDjnHHDsrK/6y6YwI4DzTy0endW9iciJw8Ffwa4O8vX7+HCySPIi2bnn/TS6SOZVFbML5e/rvl7RKRXFPwZ8HrdIXYcaOadpwXfzNMpEjEWzp3E6h31PK35e0SkFxT8GXB4moYsdOx2dfk5oykfXMAtj7+e1f2KyMCm4M+A5RvqmFRWzNjSQVndb2FelOvnTOCJDXtYs/NgVvctIgOXgv8EtbTHeXbT3qyM5unOJ2ePpzg/yq3LN+Vk/yIy8Cj4T9ALW/bR0p4IdJqG4xlalMfVs8exZNUuNtU15qQGERlYFPwnaPn6OvKjEWZPKs1ZDQvnTqYgFuFHS9fnrAYRGTgU/Cdo+fo9nDdxOIPyczfDdfngAj41ZyJLVu1i9Q619YvI8eUk+M1si5m9YmYrzaw6FzVkwq6DzbxW05D10Tzd+ezcSQwblMf/fnCtxvWLyHHl8or/Ynef4e5VOazhhDy2LjmM8+JpFTmuJNnW/5VLT+Xp1/fy1zX6Nq+IHJuaek7Ao+tqGT2siKkVJbkuBYCrZ41j2qjBfG/JWpraOnJdjoj0U7kKfgf+ZmYrzGxhdyuY2UIzqzaz6rq6uiyX17OW9jhPbdzDJdMrAvm1rb6IRSP86/wz2XGgmR/+TR29ItK9XAX/HHefCbwP+IKZzT1yBXe/1d2r3L2qvDz3behHenbTXprb4/2imaerWRNLufb88Sx6ajMrtu7PdTki0g/lZCiKu+9M/a01sz8Cs4Dluailrx5bV0thXoQLJo3I2j7T+dWtq2eP4xvvm8aj62r5yj0rWfIPb2dwYV4WqhORgSLrV/xmVmxmgzvvA+8BVme7jhPh7ixbV8ucyWUU5kVzXc5RSgpi/OQTM9i+v5n/8cfVGuUjIm+Ri6aekcCTZvYy8DzwF3d/OAd19NnG2ka272/mXdP7VzNPV1UTSvnyu6fywMs7+fXTW3Jdjoj0I1lv6nH3TcDZ2d5vJj26rhaAi0/rv8EPcONFU1i1/SDfW/Iqk8pLcjathIj0LxrO2QfL1tUybdRgThlWlOtSjisSMW6+cganjRrC53+3gpe2qbNXRBT8vXawqZ0VW/dzST9u5umquCDG4uvPo6ykgOt//YKmdBCR3IzqGcgeWVtDPOFcMn1krkvp1rFG/ny8aiy3PbGJT9z6LLctqOL8LI5GEpH+RVf8vfTgK7s4ZWgh54wdlutSeqW0OJ8b3jmZUUMLuW7R8yx9tSbXJYlIjij4e6G+pZ0nNuzhfWdV9ptv6/bG0KI87r3hAqZXDuFzv1vBbU9s0lBPkRBS8PfCI6/W0BZP8P63Vea6lD4bXpzPnZ+ZzbunV/D9v6zlC3e+SENLe67LEpEsUvD3wpJVA7OZ50jFBTFuueZcvnXZNP66pob5//WUOn1FQkTBn6a6hlYeX1/Hh2aMHpDNPEcyMxbOncydn5nNobYO5v/sKX74t9do60jkujQRCZhG9aTp/pU7iCecK84dnetSTkh3o34WvmMyS1bt5KePbuTe6u38/JqZzBw3PAfViUg26Io/Tb9fsZ2zxw5jSsXgXJeScUX5UT5WNZbrzh9PU1sHH/n503z93pepa2jNdWkiEgBd8adh9Y6DrNvdwPfmn5HrUgI1rXIIXy4rZndDC4ue3MzDq3dz48VTWHDh+Jz+prCIZJau+NOw+OktFOVF+dCMgd3Mk46CvCj//L7pPPyluZw3sZQfPLyOuf/+d3791GZaO+K5Lk9EMkCXcT3Yd6iN+1/eycfOHcPQonDMa9/ZD/Du6SOZWlHC316t4bt/fpUfP7KBi6dVcNNHz6Ig1v+moxaR9OiKvwd3v7CNto4ECy6ckOtScmL8iGI+8/aJfGrOREoKY/zxpR3Muekx/nPZBvY2qg9AZCDSFf9xtLTHWfz0FuZMGcGpI0++Tt10mRlTKkqYXD6Z1+sOsWlPIz9aup6fPbaRj8wcw4ILxzNt1JBclykiaVLwH8fdz2+jpr6VH195Tq5L6Rc6TwDf/uDpbKxt4PYnt3Dfi9u56/ltnDV6KFecO4b5M05h2KD8XJcqIsehpp5jaGmP84vHX2fWxFIumKyZLI80pWIw/+cjZ/HMP1/Cdz54OvGE850H1jDr35Zx4x0r+MuqXRxq7ch1mSLSDV3xH8P/fWoLNfWt3HzljFyX0q+VFudz/ZyJXD9nImt2HuT3K7bzwMqdPPjKbvJjEeZOLWfemaO4ZFoFw4v1SUCkP1Dwd2PXwWZ++ugG3nP6SC6cXJbrcvqdY835DzC1YjBfvvRUtuw9xJqd9bywZR+PrK3BgFOGFTG5vIQpFSX807zT+uUP1YuEgYL/CO7Ov/75VeIJ53994PRclzMgRcyYVFbCpLISPnBWJTsONPNaTQOv1zby5MY6lm+o447ntnL2mGGcM34YM8cNZ+a44ZQPLsh16SKhoOA/wr0rtvPQ6t3807zTGFs6KNflDHhmxpjhgxgzfBCXTBtJa0eczXsOkReNsGLrfhY9uZlfxjcBMHpYEaefMoTplUM4PXUbM7yISGTgT4on0p8o+LtYX9PAd+5fwwWTRnDD3Mm5LuekVBCLHh76Obm8hPb4aHYeaGbbvia2729m5bYDPPJqDZ0/D1NSEOO0UYOZXF7M5PISJpWXMKm8mHGlg8iLamyCSF8o+FN2HmhmwaLnKS6IcfOVM4jqKjMr8qIRxo8oZvyI4sPL2joS1Da0sOtAC7vqm9l9sJXXdjfQ2GWUUMRgwohiRg8vonJoIacMK0rehhZROayQ4YPyGVIYI3aCJ4fj9WcAXD173Am9vkguKPiBN/Y1sWDR8zS2dHD3DeczamhhrksKtfxY5HDzUFfNbXH2NLZS19hKXUMrxQVRdhxoYd3uumPOJFpSEGNoUR7FBVFikQh5USMWjRCLGHnRCLGoEbHOW7J/IhoxzCAaMbbubSJiRn4sQkEsQmEsQn5elEF5UUoKY2yoaaB8cAFDi/JOit9pkHAIffA//foe/vtdL9EedxZdfx5nnDI01yXJMRTlRxlbOqjbvpeORIL65g4ONLdR39xOU1ucKRUlHGxu52BzO4daO+iIOx0JpyORoD3uNLV1UFPfiuO4gzsk3HGSnfzu4EA84bR1JGjtiJM44ieKb39yMwD50QinDCtkbGnyhDW2tIixwwcxLlXv8EG5PTH09MkF9OklTEIb/LX1Lfx42QbufG4bE8uK+dV1VUypKMl1WdJHsUiE0uJ8Srt8VyCdIEsnEDu5J08crR0Jmlo7aGztoKG1g8aWDupb2jnQ1M7mPYdYsXU/TW1vncm0OD96+ISQ/DRTxJjhRYweNoiywcm6NfGdZEtOgt/M5gE/AaLAbe5+Uzb229aRoHrLPv740g4eeHknHQnnU3Mm8vX3nkZRvv6nO9n0JtTTYWbkRZNNRCUFMSqOs25re5x9TW3sP9TO/qY29jW1caCpndU76nliwx5au/mJy8EFMUaU5DO4MI+ivCgFeREK86KHv++QSDgJ77y9eSKKJ5yOeOpvIpH8VNPlccSMxtYOohEjmmrKiqaaugpiEQryohTmRahvaaekIMbgwhglBclbcUGMQflRBuXHKMqLUpQfJT+mTvWBLuvBb2ZR4GfApcB24AUze8DdX830vl7ZfpDqrfvYUNvIhpoG1uysp6ktTklBjI/MHMPn3jnpLZ2KIplSkBelcmgRlUOLjnrO3WlpT7A/dTI4Y/QQ9ja2sqexjb2H2mhoaaelPU5DSwd1Da20diRoaGnHzDCS/RCdrUbRyFv7JyKR5P2oGbGokReLgTuxSB5xT54M4gmnvT1BQ0sHLR1xWtuTzVh/f60urWOLRYyi/ChFedG3jKwy4/A0HZ3NWp5qOiPVbDYoP5psTks99iPuRyMR8qNGXuzNfpj8WCTZHxOxt9zPi0XIiyT7bDpPyG/24yQfd64biyZfNxqJEI0k64uaEYlwuI+n67/l4ftd/j0jkc71umyfeo03tz16+2jn+9O5vRkW4fBJ2DpfP7V+NuTiin8WsNHdNwGY2d3AfCDjwX/vijf4zTNbGVqUx6kjS7ji3DHMmVLGO6aW6RelJGfMUsGZnxyJdNWszDZJ9YW785GZY2hoaT/cfNXY2pE8ObTHaWqL09TW9X6c5rY48cPBnez82Fx3iCO6QTBInaiSIdcZbZ0nMrosc0/2qcRTn2YSCae1PUFTazz16SZBwpN9OvFEsk8mnlqv88QGHP4kNBC95cRhxi+vPZe5p5ZndB+5SL/RwBtdHm8HZh+5kpktBBamHjaa2WsnstNVJ7Jx5pQBe3JdRAbpeDLgk8G+vN6j/q3H43nn90/o9cd3tzAXwd/dZ5mjTs3ufitwa/DlZI+ZVbt7Va7ryBQdT/93sh2TjiczctFLsx0Y2+XxGGBnDuoQEQmlXAT/C8BUM5toZvnAJ4AHclCHiEgoZb2px907zOyLwF9JDudc5O5rsl1HjpxUTVfoeAaCk+2YdDwZYO4Ds+dbRET6Rt/EEBEJGQW/iEjIKPgzzMzmmdlrZrbRzL7ZzfNmZv+Zen6Vmc3MRZ29kcYxTTOzZ8ys1cy+losaeyON4/lk6r1ZZWZPm9nZuagzXWkcz/zUsaw0s2oze3su6uyNno6py3rnmVnczK7IZn29lcZ7dJGZHUy9RyvN7NuBFpT8yrRumbiR7Kx+HZgE5AMvA6cfsc5lwEMkv89wPvBcruvOwDFVAOcB/wZ8Ldc1Z+B4LgSGp+6/rz+/R2keTwlv9ue9DViX67pP9Ji6rPco8CBwRa7rPsH36CJgSbZq0hV/Zh2ejsLd24DO6Si6mg/8xpOeBYaZWWW2C+2FHo/J3Wvd/QWgPRcF9lI6x/O0u+9PPXyW5HdN+qt0jqfRU+kCFNPNFyb7mXT+PwL4B+APQG02i+uDdI8naxT8mdXddBSj+7BOfzLQ6u1Jb4/n0yQ/ofVXaR2PmX3YzNYBfwE+laXa+qrHYzKz0cCHgVuyWFdfpfvf3AVm9rKZPWRmZwRZkII/s9KZjiKtKSv6kYFWb0/SPh4zu5hk8H8j0IpOTLpToPzR3acBlwPfC7qoE5TOMf0Y+Ia7x7tZt79J53heBMa7+9nAT4E/BVmQgj+z0pmOYqBNWTHQ6u1JWsdjZm8DbgPmu/veLNXWF716f9x9OTDZzMqCLuwEpHNMVcDdZrYFuAL4uZldnpXqeq/H43H3endvTN1/EMgL8j1S8GdWOtNRPABclxrdcz5w0N13ZbvQXjjZptjo8XjMbBxwH3Ctu6/PQY29kc7xTLHUBPmpUWT5QH8+mfV4TO4+0d0nuPsE4PfAje7+p6xXmp503qNRXd6jWSSzObD3SJPSZ5AfYzoKM/tc6vlbSI5AuAzYCDQB1+eq3nSkc0xmNgqoBoYACTP7EslRC/W5qvtY0nyPvg2MIHkVCdDh/XRGyDSP56MkLzbagWbgyi6dvf1Omsc0YKR5PFcAnzezDpLv0SeCfI80ZYOISMioqUdEJGQU/CIiIaPgFxEJGQW/iEjIKPhFREJGwS8iEjIKfhGRkPn/DnF990TEvjYAAAAASUVORK5CYII=\n",
+      "text/plain": [
+       "<Figure size 432x288 with 1 Axes>"
+      ]
+     },
+     "metadata": {
+      "needs_background": "light"
+     },
+     "output_type": "display_data"
+    }
+   ],
+   "source": [
+    "sns.distplot(all_p[2])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 1
+}
